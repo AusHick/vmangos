@@ -3667,6 +3667,7 @@ SpellCastResult Spell::prepare(Aura* triggeredByAura, uint32 chance)
         SpellEvent* Event = new SpellEvent(this);
         m_caster->m_Events.AddEvent(Event, m_caster->m_Events.CalculateTime(1));
 
+        /*
         //Prevent casting at cast another spell (ServerSide check)
         if (!m_IsTriggeredSpell && m_caster->IsNonMeleeSpellCasted(false, true, true))
         {
@@ -3677,6 +3678,7 @@ SpellCastResult Spell::prepare(Aura* triggeredByAura, uint32 chance)
                 return SPELL_FAILED_SPELL_IN_PROGRESS;
             }
         }
+        */
         if (sObjectMgr.IsSpellDisabled(m_spellInfo->Id))
         {
             SendCastResult(SPELL_FAILED_SPELL_UNAVAILABLE);
