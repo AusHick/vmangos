@@ -22407,13 +22407,14 @@ void Player::CreatePacketBroadcaster()
 
 void Player::AddGCD(SpellEntry const& spellEntry, uint32 /*forcedDuration = 0*/, bool updateClient /*= false*/)
 {
-    int32 gcdDuration = spellEntry.StartRecoveryTime;
+    int32 gcdDuration = 1300; // spellEntry.StartRecoveryTime;
     if (!spellEntry.StartRecoveryCategory && !gcdDuration)
         return;
 
     // gcd modifier auras applied only to self spells and only player have mods for this
     ApplySpellMod(spellEntry.Id, SPELLMOD_GLOBAL_COOLDOWN, gcdDuration);
 
+    /*
     // apply haste rating
     if (spellEntry.StartRecoveryCategory == 133 && gcdDuration == 1500 &&
         spellEntry.DmgClass != SPELL_DAMAGE_CLASS_MELEE && spellEntry.DmgClass != SPELL_DAMAGE_CLASS_RANGED &&
@@ -22427,6 +22428,7 @@ void Player::AddGCD(SpellEntry const& spellEntry, uint32 /*forcedDuration = 0*/,
         gcdDuration = std::max(gcdDuration, 1000);
         gcdDuration = std::min(gcdDuration, 1500);
     }
+    */
 
     if (!gcdDuration)
         return;
