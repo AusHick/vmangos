@@ -1,0 +1,32 @@
+volumes:
+  config:
+  data:
+  lua_scripts:
+services:
+  realmd:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: realmd
+    image: realmd:base
+    volumes:
+      -config:/opt/vmangos/etc:ro
+    ports:
+      -"3724:3724/tcp"
+    deploy:
+      mode: global
+  mangosd:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: mangosd
+    image: mangosd:base
+    depends_on:
+      - realmd
+    volumes:
+      -config:/opt/vmangos/etc:ro
+      -data:/opt/vmangos/gamedata:ro
+      -lua:/opt/vmangos/lua_scripts:ro
+    ports:
+      -"8085:8085/tcp"
+    tty: true
