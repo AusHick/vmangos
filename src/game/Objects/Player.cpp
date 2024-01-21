@@ -7291,6 +7291,10 @@ void Player::DuelComplete(DuelCompleteType type)
         SendObjectMessageToSet(&data, true);
     }
 
+#ifdef ENABLE_ELUNA
+    sEluna->OnDuelEnd(duel->opponent, duel->initiator, type);
+#endif
+
     //Remove Duel Flag object
     if (GameObject* obj = GetMap()->GetGameObject(GetGuidValue(PLAYER_DUEL_ARBITER)))
         duel->initiator->RemoveGameObject(obj, true);
@@ -17692,6 +17696,10 @@ void Player::UpdateDuelFlag(time_t currTime)
 {
     if (!duel || duel->finished || duel->startTimer == 0 || currTime < duel->startTimer + 3)
         return;
+
+#ifdef ENABLE_ELUNA
+    sEluna->OnDuelStart(this, duel->opponent);
+#endif
 
     SetUInt32Value(PLAYER_DUEL_TEAM, 1);
     duel->opponent->SetUInt32Value(PLAYER_DUEL_TEAM, 2);

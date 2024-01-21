@@ -117,4 +117,5 @@ migrations_list.h
 Progression.h
 
 # Docker build files
+!.dockerignore
 docker/data/
