@@ -1090,7 +1090,11 @@ void Spell::AddUnitTarget(Unit* pTarget, SpellEffectIndex effIndex)
     if (m_spellInfo->Effect[effIndex] == 0)
         return;
 
-    if ((m_spellInfo->AttributesEx & SPELL_ATTR_EX_EXCLUDE_CASTER) && (m_spellInfo->EffectImplicitTargetA[effIndex] != TARGET_UNIT_CASTER) && (m_spellInfo->EffectImplicitTargetB[effIndex] != TARGET_UNIT_CASTER) && (pTarget->GetObjectGuid() == m_originalCasterGUID))
+    if (m_spellInfo->HasAttribute(SPELL_ATTR_EX_EXCLUDE_CASTER) &&
+        (pTarget->GetObjectGuid() == m_originalCasterGUID) &&
+        (m_spellInfo->EffectImplicitTargetA[effIndex] != TARGET_UNIT_CASTER) &&
+        (m_spellInfo->EffectImplicitTargetB[effIndex] != TARGET_UNIT_CASTER) && 
+        !IsSummonEffect(m_spellInfo->Effect[effIndex])) // summon effects need to have unit target to work, fixes 20713
         return;
 
     // Check for effect immune skip if immuned
@@ -1471,7 +1475,7 @@ void Spell::DoAllEffectOnTarget(TargetInfo *target)
             // Restauration d'energie sur miss/dodge des sorts rapportant un CP.
             // Source : http://roguecrap.blogspot.co.uk/2006/03/energy-regeneration-oddities.html, + verifiable en video
             // Source for Parry: https://youtu.be/aDXXr3ad3is?t=3m07s
-            if ((missInfo == SPELL_MISS_MISS || missInfo == SPELL_MISS_DODGE || missInfo == SPELL_MISS_PARRY) && m_spellInfo->powerType == POWER_ENERGY)
+            if ((missInfo == SPELL_MISS_MISS || missInfo == SPELL_MISS_DODGE || missInfo == SPELL_MISS_PARRY || missInfo == SPELL_MISS_IMMUNE || missInfo == SPELL_MISS_IMMUNE2) && m_spellInfo->powerType == POWER_ENERGY)
             {
                 int32 regen = lroundf(m_powerCost * 0.82f);
                 pRealUnitCaster->ModifyPower(POWER_ENERGY, regen);
@@ -1490,11 +1494,13 @@ void Spell::DoAllEffectOnTarget(TargetInfo *target)
     // All weapon based abilities can trigger weapon procs,
     // even if they do no damage, or break on damage, like Sap.
     // https://www.youtube.com/watch?v=klMsyF_Kz5o
-    bool triggerWeaponProcs = m_casterUnit != unitTarget && m_spellInfo->EquippedItemClass == ITEM_CLASS_WEAPON;
+    bool triggerWeaponProcs = m_casterUnit != unitTarget &&
+        m_spellInfo->EquippedItemClass == ITEM_CLASS_WEAPON &&
+        m_spellInfo->rangeIndex == SPELL_RANGE_IDX_COMBAT;
 
     // All calculated do it!
     // Do healing and triggers
-    if (m_healing)
+    if (m_healing && unitTarget->IsAlive())
     {
         bool crit = target->isCrit;
         uint32 addhealth = ditheru(m_healing);
@@ -1630,6 +1636,9 @@ void Spell::DoAllEffectOnTarget(TargetInfo *target)
                 this));
         }
 
+        // Damage is done after procs so it can trigger auras on the victim that affect the caster in case of killing blow.
+        pCaster->DealSpellDamage(&damageInfo, true);
+
         if (!triggerWeaponProcs && m_caster->IsPlayer())
         {
             // trigger mainhand weapon procs for shield attacks (Shield Bash, Shield Slam) NOTE: vanilla only mechanic, patched out in 2.0.1
@@ -1657,8 +1666,6 @@ void Spell::DoAllEffectOnTarget(TargetInfo *target)
                     triggerWeaponProcs = true;
             }
         }
-
-        pCaster->DealSpellDamage(&damageInfo, true);
 
         // Courroux Naturel a 20% de chance de faire proc WF.
         if (m_spellInfo->Id == 17364 && pCaster->IsPlayer())
@@ -2642,7 +2649,7 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, UnitList&
                 case 14297:
                 case 26546:
                 case 26555:
-                    minDist = 20.0f;
+                    minDist = 25.0f;
                     break;
             }
 #endif
@@ -3752,10 +3759,19 @@ SpellCastResult Spell::prepare(Aura* triggeredByAura, uint32 chance)
 
         bool channeled = m_channeled;
 
-        // [Nostalrius] Stop pets casting channeled spells ! (succubus seduce ...)
-        if (m_timer && channeled)
-            if (m_caster->IsPet())
+        if (channeled && m_casterUnit)
+        {
+            // Prevent animation from disappearing if casting another channel too soon after previous ends
+            if (m_casterUnit->HasUnitState(UNIT_STAT_PENDING_CHANNEL_RESET))
+            {
+                m_casterUnit->ClearUnitState(UNIT_STAT_PENDING_CHANNEL_RESET);
+                m_casterUnit->CancelSpellChannelingAnimationInstantly();
+            }
+
+            // [Nostalrius] Stop pets casting channeled spells ! (succubus seduce ...)
+            if (m_timer && m_casterUnit->IsPet())
                 m_casterUnit->StopMoving();
+        }
 
         // This is used so that creatures face the target on which they are casting
         if (m_setCreatureTarget = (m_caster->IsCreature() && (channeled || (!m_IsTriggeredSpell && m_timer)) && m_targets.getUnitTarget() && IsExplicitlySelectedUnitTarget(m_spellInfo->EffectImplicitTargetA[0]) && static_cast<Creature*>(m_caster)->CanHaveTarget()))
@@ -3880,13 +3896,6 @@ void Spell::cancel()
 
 void Spell::cast(bool skipCheck)
 {
-    if (m_spellInfo->Id <= 0 || m_spellInfo->Id > MAX_SPELL_ID)
-        return;
-
-    SpellEntry const* spellInfo = sSpellMgr.GetSpellEntry(m_spellInfo->Id);
-    if (!spellInfo)
-        return;
-
     SetExecutedCurrently(true);
 
     if (!m_caster->CheckAndIncreaseCastCounter())
@@ -4074,7 +4083,22 @@ void Spell::cast(bool skipCheck)
 
     // Remove any remaining invis auras on cast completion, should only be gnomish cloaking device
     if (!m_IsTriggeredSpell && m_casterUnit)
-        m_casterUnit->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_ACTION_CANCELS_LATE, m_spellInfo->Id, false, !ShouldRemoveStealthAuras(), m_spellInfo->HasAttribute(SPELL_ATTR_EX2_ALLOW_WHILE_INVISIBLE));
+    {
+        uint32 interruptFlags = AURA_INTERRUPT_ACTION_CANCELS_LATE;
+
+        // World of Warcraft Client Patch 1.7.0 (2005-09-13)
+        // - Only spells and abilities that target enemy units will cancel the World Enlarger effect.
+        // This aura has auraInterruptFlags = 4096 implying this flag triggers on negative spell casts.
+        // Confirmed on classic that its removed at the end of the cast with Aimed Shot.
+#if SUPPORTED_CLIENT_BUILD > CLIENT_BUILD_1_6_1
+        if (!Spells::IsPositiveTarget(m_spellInfo->EffectImplicitTargetA[0], m_spellInfo->EffectImplicitTargetB[0]))
+#else
+        if (Spells::IsExplicitlySelectedUnitTarget(m_spellInfo->EffectImplicitTargetA[0]) && m_casterUnit != m_targets.getUnitTarget())
+#endif
+            interruptFlags |= AURA_INTERRUPT_ATTACKING_CANCELS;
+
+        m_casterUnit->RemoveAurasWithInterruptFlags(interruptFlags, m_spellInfo->Id, false, !ShouldRemoveStealthAuras(), m_spellInfo->HasAttribute(SPELL_ATTR_EX2_ALLOW_WHILE_INVISIBLE));
+    }
 
     TakePower();
     TakeReagents();                                         // we must remove reagents before HandleEffects to allow place crafted item in same slot
@@ -4637,7 +4661,7 @@ void Spell::HandleAddTargetTriggerAuras()
     auto const& targetTriggers = m_casterUnit->GetAurasByType(SPELL_AURA_ADD_TARGET_TRIGGER);
     for (const auto targetTrigger : targetTriggers)
     {
-        if (!targetTrigger->isAffectedOnSpell(m_spellInfo))
+        if (!targetTrigger->IsAffectedOnSpell(m_spellInfo))
             continue;
         for (const auto& ihit : m_UniqueTargetInfo)
         {
@@ -4902,7 +4926,10 @@ void Spell::SendSpellGo()
 {
     // not send invisible spell casting
     if (!IsNeedSendToClient())
+    {
+        SendAllTargetsMiss();
         return;
+    }
 
     uint32 castFlags = CAST_FLAG_UNKNOWN9;
     if (m_spellInfo->IsRangedSpell())
@@ -4922,19 +4949,10 @@ void Spell::SendSpellGo()
         data << m_caster->GetGUID();
 #endif
 
-    // (HACK) Don't display cast animation for Flametongue Weapon proc
-    // TODO - figure out the rule for why some procs should or should not have cast animations
-    // e.g. rogue poison proc should have animation
 #if SUPPORTED_CLIENT_BUILD > CLIENT_BUILD_1_8_4
-    if (m_spellInfo->Id == 10444)
-        data << PackedGuid();
-     else
-        data << m_caster->GetPackGUID();
+    data << m_caster->GetPackGUID();
 #else
-    if (m_spellInfo->Id == 10444)
-        data << uint64();
-    else
-        data << m_caster->GetGUID();
+    data << m_caster->GetGUID();
 #endif
     data << uint32(m_spellInfo->Id);                        // spellId
     data << uint16(castFlags);                              // cast flags
@@ -5200,6 +5218,36 @@ void Spell::SendInterrupted(uint8 result)
     m_caster->SendObjectMessageToSet(&data, true);
 }
 
+void Spell::SendAllTargetsMiss()
+{
+    if (!m_caster->IsInWorld())
+        return;
+
+    // nothing to send
+    if (m_UniqueTargetInfo.empty())
+        return;
+
+    // we only send this packet if we have only misses
+    for (auto const& target : m_UniqueTargetInfo)
+    {
+        if (target.missCondition == SPELL_MISS_NONE)
+            return;
+    }
+
+    WorldPacket data(SMSG_SPELLLOGMISS, (4 + 8 + 1 + 4 + m_UniqueTargetInfo.size() * (8 + 1)));
+    data << uint32(m_spellInfo->Id);
+    data << m_caster->GetObjectGuid();
+    data << uint8(0);                                       // nothing shown in combat log if != 0 (calls nullsub instead)
+    data << uint32(m_UniqueTargetInfo.size());
+    for (auto const& target : m_UniqueTargetInfo)
+    {
+        data << target.targetGUID;
+        data << uint8(target.missCondition);
+        // 2 more floats if the uint8 before targets is != 0
+    }
+    m_caster->SendObjectMessageToSet(&data, true);
+}
+
 void Spell::SendChannelUpdate(uint32 time, bool interrupted)
 {
     if (!m_channeled || m_spellState == SPELL_STATE_FINISHED)
@@ -5286,17 +5334,21 @@ void Spell::SendChannelUpdate(uint32 time, bool interrupted)
 
     if (!time)
     {
-        // Reset of channel values has to be done after a few delay.
-        // Else, we have some visual bugs (arcane projectile, last tick)
-        ChannelResetEvent* event = new ChannelResetEvent(m_casterUnit);
-        m_casterUnit->m_Events.AddEventAtOffset(event, (interrupted ? 1 : 1000));
+        if (interrupted)
+        {
+            // Send update directly on interrupt to fix animation if recasting channeled spell
+            m_casterUnit->CancelSpellChannelingAnimationInstantly();
+        }
+        else
+        {
+            // Reset of channel values has to be done after a few delay.
+            // Else, we have some visual bugs (arcane projectile, last tick)
+            ChannelResetEvent* event = new ChannelResetEvent(m_casterUnit);
+            m_casterUnit->m_Events.AddEventAtOffset(event, 1000);
+        }
     }
     else if (Player* pPlayer = m_casterUnit->ToPlayer())
-    {
-        WorldPacket data(MSG_CHANNEL_UPDATE, 4);
-        data << uint32(time);
-        pPlayer->SendDirectMessage(&data);
-    }
+        pPlayer->SendChannelUpdate(time);
 }
 
 void Spell::SendChannelStart(uint32 duration)
@@ -5346,6 +5398,36 @@ void Spell::SendChannelStart(uint32 duration)
     }
 
     m_timer = duration;
+
+#if SUPPORTED_CLIENT_BUILD > CLIENT_BUILD_1_11_2
+    if (m_spellInfo->HasAttribute(SPELL_ATTR_EX_IS_CHANNELED))
+    {
+        WorldPacket data(SMSG_SPELL_UPDATE_CHAIN_TARGETS);
+        data << m_caster->GetObjectGuid();
+        data << uint32(m_spellInfo->Id);
+        size_t count_pos = data.wpos();
+        data << uint32(0);
+        uint32 hit = 0;
+        for (TargetList::const_iterator itr = m_UniqueTargetInfo.begin(); itr != m_UniqueTargetInfo.end(); ++itr)
+        {
+            if (((itr->effectMask & (1 << EFFECT_INDEX_0)) && itr->reflectResult == SPELL_MISS_NONE &&
+                m_CastItem) || itr->targetGUID != m_caster->GetObjectGuid())
+            {
+                if (Unit* target = ObjectAccessor::GetUnit(*m_caster, itr->targetGUID))
+                {
+                    ++hit;
+                    data << target->GetObjectGuid();
+                }
+            }
+        }
+        if (hit)
+        {
+            data.put<uint32>(count_pos, hit);
+            m_caster->SendMessageToSet(&data, true);
+        }
+    }
+#endif
+
     if (m_casterUnit)
     {
         if (target)
@@ -5740,8 +5822,7 @@ void Spell::RemoveChanneledAuraHolder(SpellAuraHolder* holder, AuraRemoveMode mo
 
 SpellCastResult Spell::CheckCast(bool strict)
 {
-    if (m_spellInfo->HasAttribute(SPELL_ATTR_EX_IGNORE_CASTER_AND_TARGET_RESTRICTIONS) ||
-        m_spellInfo->HasAttribute(SPELL_ATTR_EX3_IGNORE_CASTER_AND_TARGET_RESTRICTIONS))
+    if (m_spellInfo->IsIgnoringCasterAndTargetRestrictions())
         return SPELL_CAST_OK;
 
     if (m_caster->IsPlayer() && m_caster->ToPlayer()->HasCheatOption(PLAYER_CHEAT_NO_CHECK_CAST))
@@ -6235,6 +6316,11 @@ SpellCastResult Spell::CheckCast(bool strict)
                     if (m_casterUnit && m_casterUnit->HasAura(18172))
                         return SPELL_FAILED_ITEM_NOT_READY;
                 }
+                else if (m_spellInfo->Id == 21050) // Melodious Rapture
+                {
+                    if (!m_targets.getUnitTarget() || m_targets.getUnitTarget()->GetEntry() != 13016)
+                        return SPELL_FAILED_BAD_TARGETS;
+                }
                 else if (m_spellInfo->IsFitToFamilyMask<CF_WARLOCK_LIFE_TAP>() && m_casterUnit)
                 {
                     float cost = m_currentBasePoints[EFFECT_INDEX_0];
@@ -6332,7 +6418,7 @@ SpellCastResult Spell::CheckCast(bool strict)
                     return SPELL_FAILED_DONT_REPORT;
                 }
 
-                if (!target->GetCreatureInfo()->isTameable())
+                if (!target->GetCreatureInfo()->IsTameable())
                 {
                     plrCaster->SendPetTameFailure(PETTAME_NOTTAMEABLE);
                     return SPELL_FAILED_DONT_REPORT;
@@ -6493,11 +6579,6 @@ SpellCastResult Spell::CheckCast(bool strict)
                 if (!creature->IsSkinnableBy(m_caster->ToPlayer()))
                     return SPELL_FAILED_TARGET_NOT_LOOTED;
 
-                // If the player isn't in loot range, the skins are lost forever.
-                // This only happens on large mobs with disjointed models (i.e. Devilsaurs).
-                if (!creature->IsWithinDistInMap(m_caster, INTERACTION_DISTANCE))
-                    return SPELL_FAILED_OUT_OF_RANGE;
-
                 int32 skillValue = ((Player*)m_caster)->GetSkillValue(SKILL_SKINNING);
                 int32 TargetLevel = m_targets.getUnitTarget()->GetLevel();
                 int32 ReqValue = (skillValue < 100 ? (TargetLevel - 10) * 10 : TargetLevel * 5);
@@ -6618,6 +6699,18 @@ SpellCastResult Spell::CheckCast(bool strict)
                     if ((canFailAtMax || skillValue < sWorld.GetConfigMaxSkillValue()) && reqSkillValue > irand(skillValue - 25, skillValue + 37))
                         return SPELL_FAILED_TRY_AGAIN;
                 }
+                break;
+            }
+            case SPELL_EFFECT_PICKPOCKET:
+            {
+                Creature* target = ToCreature(m_targets.getUnitTarget());
+                if (!target || target->GetOwnerGuid().IsPlayer())
+                    return SPELL_FAILED_BAD_TARGETS;
+
+                if (!target->GetCreatureInfo()->pickpocket_loot_id &&
+                    !(target->GetCreatureTypeMask() & CREATURE_TYPEMASK_HUMANOID_OR_UNDEAD))
+                    return SPELL_FAILED_TARGET_NO_POCKETS;
+
                 break;
             }
             case SPELL_EFFECT_SUMMON_DEAD_PET:
@@ -7177,6 +7270,15 @@ SpellCastResult Spell::CheckCasterAuras() const
     SpellCastResult prevented_reason = SPELL_CAST_OK;
     // Have to check if there is a stun aura. Otherwise will have problems with ghost aura apply while logging out
     uint32 unitflag = m_casterUnit->GetUInt32Value(UNIT_FIELD_FLAGS);     // Get unit state
+
+    // World of Warcraft Client Patch 1.7.0 (2005-09-13)
+    // - Fixed a bug where Fear and Curse of Recklessness, when used together,
+    //   would prevent targets from casting spells.
+#if SUPPORTED_CLIENT_BUILD <= CLIENT_BUILD_1_6_1
+    if (m_casterUnit->HasAuraType(SPELL_AURA_MOD_FEAR))
+        unitflag |= UNIT_FLAG_FLEEING;
+#endif
+
     if ((unitflag & UNIT_FLAG_STUNNED) && !(mechanic_immune & (1 << (MECHANIC_STUN - 1u))) && 
         (!m_casttime || m_spellInfo->HasSpellInterruptFlag(SPELL_INTERRUPT_FLAG_STUN)))
         prevented_reason = SPELL_FAILED_STUNNED;
@@ -7282,6 +7384,22 @@ bool Spell::CanAutoCast(Unit* target)
                 {
                     if (target->HasAura(m_spellInfo->Id, SpellEffectIndex(j)))
                         return false;
+
+                    // World of Warcraft Client Patch 1.7.0 (2005-09-13)
+                    // - Hunter's pets will be smarter about when to use Dash/Dive.
+#if SUPPORTED_CLIENT_BUILD > CLIENT_BUILD_1_6_1
+                    if (m_spellInfo->EffectApplyAuraName[j] == SPELL_AURA_MOD_INCREASE_SPEED &&
+                        m_casterUnit->CanReachWithMeleeAutoAttack(m_casterUnit->GetVictim()))
+                        return false;
+#endif
+
+                    // World of Warcraft Client Patch 1.7.0 (2005-09-13)
+                    // - Succubus pets will be smarter about when to use Seduction.
+#if SUPPORTED_CLIENT_BUILD > CLIENT_BUILD_1_6_1
+                    if (m_spellInfo->EffectApplyAuraName[j] == SPELL_AURA_MOD_STUN &&
+                        target->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_STUNNED))
+                        return false;
+#endif
                 }
             }
             else if (IsAreaAuraEffect(m_spellInfo->Effect[j]))
@@ -8842,16 +8960,12 @@ bool ChannelResetEvent::Execute(uint64 e_time, uint32)
 
 void ChannelResetEvent::Abort(uint64 e_time)
 {
-    Spell* currSpell = caster->GetCurrentSpell(CURRENT_CHANNELED_SPELL);
+    if (!m_caster->HasUnitState(UNIT_STAT_PENDING_CHANNEL_RESET))
+        return;
+
+    m_caster->ClearUnitState(UNIT_STAT_PENDING_CHANNEL_RESET);
+
+    Spell* currSpell = m_caster->GetCurrentSpell(CURRENT_CHANNELED_SPELL);
     if (!currSpell || currSpell->getState() == SPELL_STATE_FINISHED)
-    {
-        caster->SetChannelObjectGuid(ObjectGuid());
-        caster->SetUInt32Value(UNIT_CHANNEL_SPELL, 0);
-        if (caster->IsPlayer())
-        {
-            WorldPacket data(MSG_CHANNEL_UPDATE, 4);
-            data << uint32(0);
-            ((Player*)caster)->SendDirectMessage(&data);
-        }
-    }
+        m_caster->CancelSpellChannelingAnimationInstantly();
 }

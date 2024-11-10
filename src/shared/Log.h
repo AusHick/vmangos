@@ -147,6 +147,7 @@ enum LogType
     LOG_ELUNA,
 #endif /* ENABLE_ELUNA */
 
+    LOG_SCRIPTS,
     LOG_TYPE_MAX
 };
 
@@ -168,6 +169,7 @@ class Log : public MaNGOS::Singleton<Log, MaNGOS::ClassLevelLockable<Log, std::m
         } 
     }
     public:
+        void OpenWorldLogFiles();
         void InitSmartlogEntries(std::string const& str);
         void InitSmartlogGuids(std::string const& str);
 
@@ -207,12 +209,10 @@ class Log : public MaNGOS::Singleton<Log, MaNGOS::ClassLevelLockable<Log, std::m
         void SetColor(FILE* where, Color color) const;
         void ResetColor(FILE* where) const;
 
-        static void outTime(FILE* where);
-        static void outTimestamp(FILE* file);
+        static void OutTime(FILE* where);
+        static void OutTimestamp(FILE* file);
 
-        FILE* openLogFile(char const* configFileName, char const* defaultFileName, bool timestampFile, bool overwriteOnOpen) const;
-        FILE* openGmlogPerAccount(uint32 account) const;
-
+        FILE* OpenLogFile(char const* configFileName, char const* defaultFileName, bool timestampFile, bool overwriteOnOpen) const;
         FILE* logFiles[LOG_TYPE_MAX];
 
         // log/console control
@@ -229,12 +229,6 @@ class Log : public MaNGOS::Singleton<Log, MaNGOS::ClassLevelLockable<Log, std::m
         // cache values for after initilization use (like gm log per account case)
         std::string m_logsDir;
         std::string const m_logsTimestamp;
-
-        // char log control
-        bool m_charLog_Dump;
-
-        // gm log control
-        std::string m_gmlog_filename_format;
 
         // smart log for logging events (e.g. deaths) of certain entities
         std::unordered_set<uint32> m_smartlogExtraEntries;

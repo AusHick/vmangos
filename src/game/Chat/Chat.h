@@ -25,6 +25,7 @@
 #include "Common.h"
 #include "SharedDefines.h"
 #include "ObjectGuid.h"
+#include <memory>
 
 struct AreaTriggerTeleport;
 struct AreaTriggerEntry;
@@ -195,6 +196,8 @@ class ChatHandler
 
         //Cheats
         bool HandleCheatStatusCommand(char *);
+        bool HandleCheatFlyCommand(char* args);
+        bool HandleCheatFixedZCommand(char* args);
         bool HandleCheatGodCommand(char *);
         bool HandleCheatCooldownCommand(char *);
         bool HandleCheatCastTimeCommand(char *);
@@ -272,6 +275,7 @@ class ChatHandler
         bool HandlePartyBotSetRoleCommand(char * args);
         bool HandlePartyBotAttackStartCommand(char * args);
         bool HandlePartyBotAttackStopCommand(char * args);
+        bool HandlePartyBotPullCommand(char * args);
         bool HandlePartyBotAoECommand(char * args);
         bool HandlePartyBotControlMarkCommand(char * args);
         bool HandlePartyBotFocusMarkCommand(char * args);
@@ -535,7 +539,6 @@ class ChatHandler
 
         bool HandleGMCommand(char* args);
         bool HandleGMChatCommand(char* args);
-        bool HandleGMFlyCommand(char* args);
         bool HandleGMListFullCommand(char* args);
         bool HandleGMListIngameCommand(char* args);
         bool HandleGMVisibleCommand(char* args);
@@ -606,6 +609,7 @@ class ChatHandler
         bool HandleListItemCommand(char* args);
         bool HandleListObjectCommand(char* args);
         bool HandleListTalentsCommand(char* args);
+        bool HandleListMapsCommand(char* args);
         bool HandleListMoveGensCommand(char* args);
         bool HandleListHostileRefsCommand(char* args);
         bool HandleListThreatCommand(char* args);
@@ -736,6 +740,7 @@ class ChatHandler
 
         bool HandleUnitAIInfoCommand(char* args);
         bool HandleUnitInfoCommand(char* args);
+        bool HandleUnitMoveInfoCommand(char* args);
         bool HandleUnitSpeedInfoCommand(char* args);
         bool HandleUnitStatInfoCommand(char* args);
         bool HandleUnitUpdateFieldsInfoCommand(char* args);
@@ -755,6 +760,7 @@ class ChatHandler
         bool HandleUnitShowSheathStateCommand(char* args);
         bool HandleUnitShowMoveFlagsCommand(char* args);
         bool HandleUnitShowCreateSpellCommand(char* args);
+        bool HandleUnitShowCombatTimerCommand(char* args);
 
         bool HandlePDumpLoadCommand(char* args);
         bool HandlePDumpWriteCommand(char* args);
@@ -800,6 +806,7 @@ class ChatHandler
         bool HandleReloadConditionsCommand(char* args);
         bool HandleReloadCreatureSpellsCommand(char* args);
         bool HandleReloadCreatureSpellScriptsCommand(char* args);
+        bool HandleReloadCreatureTemplatesCommand(char* args);
         bool HandleReloadCreatureQuestRelationsCommand(char* args);
         bool HandleReloadCreatureQuestInvRelationsCommand(char* args);
         bool HandleReloadGameGraveyardZoneCommand(char* args);
@@ -847,7 +854,6 @@ class ChatHandler
         bool HandleReloadReputationRewardRateCommand(char* args);
         bool HandleReloadReputationSpilloverTemplateCommand(char* args);
         bool HandleReloadSkillFishingBaseLevelCommand(char* args);
-        bool HandleReloadSpellAffectCommand(char* args);
         bool HandleReloadSpellAreaCommand(char* args);
         bool HandleReloadSpellChainCommand(char* args);
         bool HandleReloadSpellElixirCommand(char* args);
@@ -1075,8 +1081,8 @@ class ChatHandler
         void ShowAllUpdateFieldsHelper(Object const* pTarget);
         void ShowUpdateFieldHelper(Object const* pTarget, uint16 index);
         SkillLineEntry const* FindSkillLineEntryFromProfessionName(char* args, std::string& nameOut);
-        bool LookupPlayerSearchCommand(QueryResult* result, uint32* limit = nullptr);
-        bool HandleBanListHelper(QueryResult* result);
+        bool LookupPlayerSearchCommand(std::unique_ptr<QueryResult> result, uint32* limit = nullptr);
+        bool HandleBanListHelper(std::unique_ptr<QueryResult> result);
         bool HandleBanHelper(BanMode mode, char* args);
         bool HandleBanInfoHelper(uint32 accountid, char const* accountname);
         bool HandleUnBanHelper(BanMode mode, char* args);

@@ -393,6 +393,7 @@ class Map : public GridRefManager<NGridType>
 
         bool GetUnloadLock(GridPair const& p) const { return getNGrid(p.x_coord, p.y_coord)->getUnloadLock(); }
         void SetUnloadLock(GridPair const& p, bool on) { getNGrid(p.x_coord, p.y_coord)->setUnloadExplicitLock(on); }
+        void ForceLoadGridsAroundPosition(float x, float y);
         void LoadGrid(Cell const& cell, bool no_unload = false);
         bool UnloadGrid(uint32 const& x, uint32 const& y, bool pForce);
         virtual void UnloadAll(bool pForce);
@@ -403,6 +404,7 @@ class Map : public GridRefManager<NGridType>
         }
 
         time_t GetGridExpiry(void) const { return i_gridExpiry; }
+        time_t GetCreateTime() const { return m_createTime; }
         uint32 GetId(void) const { return i_id; }
 
         // some calls like isInWater should not use vmaps due to processor power
@@ -481,7 +483,7 @@ class Map : public GridRefManager<NGridType>
         // Adds the provided command to the queue. Will be handled by ScriptsProcess.
         void ScriptCommandStart(ScriptInfo const& script, uint32 delay, ObjectGuid sourceGuid, ObjectGuid targetGuid);
         // Immediately executes the provided command.
-        void ScriptCommandStartDirect(ScriptInfo const& script, WorldObject* source, WorldObject* target);
+        bool ScriptCommandStartDirect(ScriptInfo const& script, WorldObject* source, WorldObject* target);
         // Removes all parts of script from the queue.
         void TerminateScript(ScriptAction const& step);
 
@@ -575,6 +577,7 @@ class Map : public GridRefManager<NGridType>
         void MarkNotUpdated() { m_updateFinished = false; }
         void SetUpdateDiffMod(int32 d) { m_updateDiffMod = d; }
         uint32 GetUpdateDiffMod() const { return m_updateDiffMod; }
+        TimePoint GetCurrentClockTime() const { return m_currentTime; }
         void BindToInstanceOrRaid(Player* player, time_t objectResetTime, bool permBindToRaid);
 
         // WeatherSystem
@@ -697,8 +700,10 @@ class Map : public GridRefManager<NGridType>
         bool m_crashed = false;
         bool m_updateFinished = false;
         uint32 m_updateDiffMod;
+        TimePoint m_currentTime;
         uint32 m_lastMvtSpellsUpdate = 0;
     private:
+        time_t m_createTime; // time when map was created
         time_t i_gridExpiry;
 
         NGridType* i_grids[MAX_NUMBER_OF_GRIDS][MAX_NUMBER_OF_GRIDS];
