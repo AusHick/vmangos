@@ -173,8 +173,8 @@ class GameObject : public SpellCaster
         LootState getLootState() const { return m_lootState; }
         void SetLootState(LootState s);
 
-        void AddToSkillupList(Player* player);
-        bool IsInSkillupList(Player* player) const;
+        void AddToSkillupList(Player const* player);
+        bool IsInSkillupList(Player const* player) const;
         void ClearSkillupList() { m_SkillupSet.clear(); }
         void ClearAllUsesData()
         {
@@ -189,8 +189,8 @@ class GameObject : public SpellCaster
         void SetSummonTarget(ObjectGuid o) { m_summonTarget = o; }
         void FinishRitual();
         void AddUniqueUse(Player* player);
-        void RemoveUniqueUse(Player* player);
-        bool HasUniqueUser(Player* player);
+        void RemoveUniqueUse(Player const* player);
+        bool HasUniqueUser(Player const* player);
         uint32 GetUniqueUseCount();
 
         void AddUse() { ++m_useTimes; }
@@ -211,7 +211,7 @@ class GameObject : public SpellCaster
 
         bool HasQuest(uint32 quest_id) const;
         bool HasInvolvedQuest(uint32 quest_id) const;
-        bool ActivateToQuest(Player *pTarget) const;
+        bool ActivateToQuest(Player const* pTarget) const;
         uint32 GetDefaultGossipMenuId() const override { return GetGOInfo()->GetGossipMenuId(); }
         void UseDoorOrButton(uint32 time_to_restore = 0, bool alternative = false);
                                                             // 0 = use `gameobject`.`spawntimesecs`

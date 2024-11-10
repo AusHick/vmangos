@@ -58,6 +58,7 @@ DatabaseType LoginDatabase;                                 // Accessor to the r
 DatabaseType LogsDatabase;                                  // Accessor to the logs database
 
 uint32 realmID;                                             // Id of the realm
+std::string realmName;                                      // Name of the realm
 
 // Print out the usage string for this program on the console.
 void usage(const char *prog)
@@ -85,8 +86,6 @@ extern int main(int argc, char **argv)
 {
     // Command line parsing
     char const* cfg_file = _MANGOSD_CONFIG;
-
-
     char const *options = ":c:s:";
 
     ACE_Get_Opt cmd_opts(argc, argv, options);
@@ -166,6 +165,9 @@ extern int main(int argc, char **argv)
         return 1;
     }
 
+    // Reads config for file names so needs to be after we set the config.
+    sLog.OpenWorldLogFiles();
+
 #ifndef WIN32                                               // posix daemon commands need apply after config read
     switch (serviceDaemonMode)
     {
@@ -194,9 +196,6 @@ extern int main(int argc, char **argv)
         "        MMMMMM\n\n");
     sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "VMaNGOS : https://github.com/vmangos");
     sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "Using configuration file %s.", cfg_file);
-
-#define STR(s) #s
-#define XSTR(s) STR(s)
 
     sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "Alloc library: " MANGOS_ALLOC_LIB "");
     sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "Core Revision: " _FULLVERSION);
